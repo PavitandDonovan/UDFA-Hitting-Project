@@ -21,7 +21,7 @@ Big10_Stats <- function(team_id, team_name, min_PA = 50) {
   # Pull Big 10 Raw Stats
   data <- ncaa_stats(team_id = team_id, year = 2025, type = "batting")
 
-  # Cleaned and calculated stats with additional metrics.
+  # Cleaned and calculated stats with additional metrics
   data_clean <- data %>%
     filter(Pos != "P") %>%
     mutate(
