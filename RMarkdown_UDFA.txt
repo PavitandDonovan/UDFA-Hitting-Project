@@ -1,0 +1,229 @@
+---
+title: "RMarkdown_UDFA"
+author: "Author"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+# Install the college baseball package by Robert Frey (only run once)
+# devtools::install_github("robert-frey/collegebaseball") 
+
+# Load necessary libraries
+library(collegebaseball)  
+library(dplyr)
+
+# Create a Data Frame of Division 1 teams for the 2025 season
+college_baseball <- tryCatch(
+  ncaa_teams(years = 2025, divisions = 1),
+  error = function(e) {
+    message("Failed to load NCAA teams: ", e$message)
+    NULL
+  }
+)
+
+# Get Positional Player stats for Illinois
+Illinois <- tryCatch(
+  ncaa_stats(team_id = 596563, year = 2025, type = "batting"),
+  error = function(e) {
+    message("Failed to load Illinois stats: ", e$message)
+    NULL
+  }
+)
+
+# Only proceed if Illinois data loaded successfully
+if (!is.null(Illinois)) {
+  # Remove Pitchers
+  Illinois <- Illinois |> 
+    filter(Pos != "P") 
+  
+  # Add Plate Appearances (PA)
+  Illinois <- Illinois |> 
+    mutate(PA = AB + BB + HBP + SF + SH) 
+  
+  # Filter for players with more than 50 PA
+  Illinois <- Illinois |> 
+    filter(PA > 50) 
+  
+  # Add Isolated Power (ISO)
+  Illinois <- Illinois |> 
+    mutate(ISO = SlgPct - BA)
+  
+  # Add Strikeout and Walk Rates
+  Illinois <- Illinois |> 
+    mutate(
+      Strikeout_rate = paste0(round((K / PA) * 100), "%"),
+      Walk_rate = paste0(round((BB / PA) * 100), "%")
+    )
+  
+  # Add Batting Average on Balls In Play (BABIP)
+  Illinois <- Illinois |> 
+    mutate(
+      BABIP = round((H - HR) / (AB - K - HR + SF), 3)
+    )
+  
+  # Move key variables to the front
+  Illinois <- Illinois |> 
+    relocate(Strikeout_rate, Walk_rate, ISO, BABIP, PA) 
+  
+  # View cleaned and manipulated data set
+  print(Illinois)
+} else {
+  message("Illinois data not available; skipping processing.")
+}
+```
+
+```{r big_10, message=FALSE, warning=FALSE}
+# Load necessary libraries
+library(collegebaseball)  
+library(dplyr)
+library(tibble)
+library(purrr)
+
+# ---------------------------
+# Big 10 Teams Lookup Table
+# ---------------------------
+Big_10_Teams <- tibble::tibble( 
+  name = c("Illinois", "Indiana", "Iowa", "Maryland", "Michigan", "Michigan_St",
+           "Minnesota", "Nebraska", "Northwestern", "Ohio_St", "Oregon", "Penn_St",
+           "Purdue", "Rutgers", "Southern_California", "UCLA", "Washington"),
+  id = c(596563, 596566, 596569, 596593, 596602, 596601,
+         596604, 596712, 596636, 596639, 596644, 596647,
+         596653, 596660, 596681, 596514, 596443)
+) 
+
+# ---------------------------
+# Function to pull and clean batting stats for a given team and year
+# ---------------------------
+Big10_Stats <- function(team_id, team_name, min_PA = 50) {
+  data <- tryCatch(
+    ncaa_stats(team_id = team_id, year = 2025, type = "batting"),
+    error = function(e) {
+      message("Failed to load stats for ", team_name, ": ", e$message)
+      return(NULL)
+    }
+  )
+  
+  if (is.null(data)) return(NULL)
+  
+  data_clean <- data %>%
+    filter(Pos != "P") %>%
+    mutate(
+      PA = AB + BB + HBP + SF + SH,
+      ISO = SlgPct - BA,
+      Strikeout_rate = K / PA,
+      Walk_rate = BB / PA,
+      BABIP = (H - HR) / (AB - K - HR + SF),
+      OPS = OBPct + SlgPct,
+      BABIP = round(BABIP, 3)
+    ) %>%
+    filter(PA > min_PA) %>%
+    arrange(Strikeout_rate) %>%
+    mutate(
+      Strikeout_rate = paste0(round(Strikeout_rate * 100), "%"),
+      Walk_rate = paste0(round(Walk_rate * 100), "%")
+    ) %>%
+    relocate(
+      player_name, team_name, Yr, year, Pos, conference, division, Jersey,
+      GP, GS, PA, Strikeout_rate, Walk_rate, BABIP, ISO, BA, OPS
+    )
+  
+  return(data_clean)
+}
+
+# ---------------------------
+# Pull stats for individual team (example: Washington)
+# ---------------------------
+Washington <- Big10_Stats(team_id = 596443, team_name = "Washington")
+
+# ---------------------------
+# Pull combined Big 10 hitters stats for all teams
+# ---------------------------
+Big_10_Hitters <- pmap_dfr(
+  Big_10_Teams,
+  ~ Big10_Stats(team_id = ..2, team_name = ..1)
+)
+
+```
+
+```{css, echo=FALSE}
+/* Overall look */
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  color: #222;
+}
+
+/* Player box - fixed with proper border isolation */
+.player-box {
+  border: 0.5px solid #003366;
+  border-radius: 5px;
+  padding: 0; /* Changed from 20px to 0 */
+  margin-bottom: 0px;
+  background-color: #f9fafc;
+  box-shadow: 2px 2px 6px rgba(0,0,0,0.1);
+  overflow: hidden; /* This ensures content stays within rounded borders */
+}
+
+/* Player header - fixed margins */
+.player-header {
+  background-color: #003366;
+  color: white;
+  padding: 2px 4px;
+  padding-left:0;
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0; /* Removed negative margins */
+}
+
+/* Content area inside player box */
+.player-content {
+  padding: 15px 20px; /* general padding */
+  padding-left: 25px; /* extra indent for content */
+}
+
+
+/* Profile info (bulleted list cleanup) */
+.player-info {
+  list-style: none;
+  padding-left: 0.5;
+  margin-bottom: 15px;
+}
+.player-info li {
+  padding: 2px 0;
+}
+
+```
+
+::: {.player-box}
+<div class="player-header">PLAYER RANK NUMBER. PLAYER NAME</div>
+
+<img src="https://www.mlbstatic.com/team-logos/TEAMID.svg"
+     alt="Team Name Logo" width="70" 
+     style="float: right; margin: 0 0 10px 15px;">
+     
+<ul class="player-info">
+<li><b>College:</b> COLLEGE_NAME</li>
+<li><b>Team:</b> MLB_TEAM</li>
+<li><b>Level:</b> CURRENT_LEVEL</li>
+<li><b>Age:</b> PLAYER_AGE</li>
+<li><b>Position:</b> PRIMARY_POSITION</li>
+<li><b>Bats/Throws:</b> B/T</li>
+</ul>
+
+<div class="player-content">
+
+### Amateur Summary
+[Insert amateur scouting summary here]
+
+### Pro Summary
+[Insert professional scouting summary here]
+
+</div> <!-- end player-content -->
+
+:::
+
+```{r player_summary, message=FALSE, warning=FALSE}
+#Repeat Code Above for Every New Player
+```
+
