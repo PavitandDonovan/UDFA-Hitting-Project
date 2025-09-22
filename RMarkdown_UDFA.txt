@@ -8,104 +8,43 @@ output: html_document
 ```{r setup, message=FALSE, warning=FALSE}
 # Install the college baseball package by Robert Frey (only run once)
 # devtools::install_github("robert-frey/collegebaseball") 
+# Note: This code runs successfully in a regular RStudio script.
+# Within R Markdown, connection errors may occur when pulling live data.
 
-# Load necessary libraries
-library(collegebaseball)  
-library(dplyr)
-
-# Create a Data Frame of Division 1 teams for the 2025 season
-college_baseball <- tryCatch(
-  ncaa_teams(years = 2025, divisions = 1),
-  error = function(e) {
-    message("Failed to load NCAA teams: ", e$message)
-    NULL
-  }
-)
-
-# Get Positional Player stats for Illinois
-Illinois <- tryCatch(
-  ncaa_stats(team_id = 596563, year = 2025, type = "batting"),
-  error = function(e) {
-    message("Failed to load Illinois stats: ", e$message)
-    NULL
-  }
-)
-
-# Only proceed if Illinois data loaded successfully
-if (!is.null(Illinois)) {
-  # Remove Pitchers
-  Illinois <- Illinois |> 
-    filter(Pos != "P") 
-  
-  # Add Plate Appearances (PA)
-  Illinois <- Illinois |> 
-    mutate(PA = AB + BB + HBP + SF + SH) 
-  
-  # Filter for players with more than 50 PA
-  Illinois <- Illinois |> 
-    filter(PA > 50) 
-  
-  # Add Isolated Power (ISO)
-  Illinois <- Illinois |> 
-    mutate(ISO = SlgPct - BA)
-  
-  # Add Strikeout and Walk Rates
-  Illinois <- Illinois |> 
-    mutate(
-      Strikeout_rate = paste0(round((K / PA) * 100), "%"),
-      Walk_rate = paste0(round((BB / PA) * 100), "%")
-    )
-  
-  # Add Batting Average on Balls In Play (BABIP)
-  Illinois <- Illinois |> 
-    mutate(
-      BABIP = round((H - HR) / (AB - K - HR + SF), 3)
-    )
-  
-  # Move key variables to the front
-  Illinois <- Illinois |> 
-    relocate(Strikeout_rate, Walk_rate, ISO, BABIP, PA) 
-  
-  # View cleaned and manipulated data set
-  print(Illinois)
-} else {
-  message("Illinois data not available; skipping processing.")
-}
-```
-
-```{r big_10, message=FALSE, warning=FALSE}
-# Load necessary libraries
+#Load necessary libraries
 library(collegebaseball)  
 library(dplyr)
 library(tibble)
 library(purrr)
+```
 
-# ---------------------------
-# Big 10 Teams Lookup Table
-# ---------------------------
-Big_10_Teams <- tibble::tibble( 
-  name = c("Illinois", "Indiana", "Iowa", "Maryland", "Michigan", "Michigan_St",
-           "Minnesota", "Nebraska", "Northwestern", "Ohio_St", "Oregon", "Penn_St",
-           "Purdue", "Rutgers", "Southern_California", "UCLA", "Washington"),
-  id = c(596563, 596566, 596569, 596593, 596602, 596601,
-         596604, 596712, 596636, 596639, 596644, 596647,
-         596653, 596660, 596681, 596514, 596443)
-) 
+```{r sec-teams}
+# SEC Lookup Table: A lookup table for SEC teams with their corresponding IDs
+SEC_Teams <- tibble::tibble(
+  name = c("Alabama", "Arkansas", "Auburn", "Florida", "Georgia", "Kentucky",
+           "LSU", "Mississippi_St", "Missouri", "Oklahoma", "Ole_Miss",
+           "South_Carolina", "Tennessee", "Texas", "Texas_AM", "Vanderbilt"),
+  id = c(596480, 596487, 596489, 596546, 596554, 596577,
+         596583, 596605, 596605, 596641, 596607,
+         596677, 596721, 596425, 596420, 596434)
+)
+```
 
-# ---------------------------
-# Function to pull and clean batting stats for a given team and year
-# ---------------------------
-Big10_Stats <- function(team_id, team_name, min_PA = 50) {
+```{r sec-function}
+# SEC Stats Function: Function to pull and clean batting stats for a given SEC team and year
+SEC_Stats <- function(team_id, team_name, min_PA = 50) {
+  
+  # Pull SEC Raw Stats
   data <- tryCatch(
     ncaa_stats(team_id = team_id, year = 2025, type = "batting"),
     error = function(e) {
-      message("Failed to load stats for ", team_name, ": ", e$message)
+      message("Note: Code runs in regular RStudio file:", team_name, ": ", e$message)
       return(NULL)
     }
   )
+   if (is.null(data)) return(tibble())
   
-  if (is.null(data)) return(NULL)
-  
+  # Cleaned and calculated stats with additional metrics
   data_clean <- data %>%
     filter(Pos != "P") %>%
     mutate(
@@ -130,19 +69,277 @@ Big10_Stats <- function(team_id, team_name, min_PA = 50) {
   
   return(data_clean)
 }
+```
 
-# ---------------------------
-# Pull stats for individual team (example: Washington)
-# ---------------------------
-Washington <- Big10_Stats(team_id = 596443, team_name = "Washington")
+```{r sec-single_team_example}
+#Single Team Example
+Alabama <- tryCatch(
+  {
+    SEC_Stats(team_id = 596480, team_name = "Alabama")
+  },
+  error = function(e) {
+    message("Note: Code runs in regular RStudio file: ", e$message)
+    return(NULL) # return NULL so the rest of the document still runs
+  }
+)
+```
 
-# ---------------------------
-# Pull combined Big 10 hitters stats for all teams
-# ---------------------------
+```{r sec-hitter_stats}
+#Pull stats for all SEC teams using pmap_dfr
+SEC_Hitters <- pmap_dfr(
+  SEC_Teams,
+  ~ SEC_Stats(team_id = ..2, team_name = ..1)
+) 
+```
+
+```{r big10-teams}
+# Big Ten Lookup Table: A lookup table for Big 10 teams with their corresponding IDs
+Big_10_Teams <- tibble::tibble( 
+  name = c("Illinois", "Indiana", "Iowa", "Maryland", "Michigan", "Michigan_St",
+           "Minnesota", "Nebraska", "Northwestern", "Ohio_St", "Oregon", "Penn_St",
+           "Purdue", "Rutgers", "Southern_California", "UCLA", "Washington"),
+  id = c(596563, 596566, 596569, 596593, 596602, 596601,
+         596604, 596712, 596636, 596639, 596644, 596647,
+         596653, 596660, 596681, 596514, 596443)
+) 
+```
+
+```{r big10-function}
+# Big Ten Stats Function: Function to pull and clean batting stats for a given team and year
+Big10_Stats <- function(team_id, team_name, min_PA = 50) {
+  
+  # Pull Big 10 Raw Stats
+  data <- tryCatch(
+    ncaa_stats(team_id = team_id, year = 2025, type = "batting"),
+    error = function(e) {
+      message("Note: Code runs in regular RStudio file: ", team_name, ": ", e$message)
+      return(NULL)
+    }
+  )
+   if (is.null(data)) return(tibble())
+  
+  # Cleaned and calculated stats with additional metrics.
+  data_clean <- data %>%
+    filter(Pos != "P") %>%
+    mutate(
+      PA = AB + BB + HBP + SF + SH,
+      ISO = SlgPct - BA,
+      Strikeout_rate = K / PA,
+      Walk_rate = BB / PA,
+      BABIP = (H - HR) / (AB - K - HR + SF),
+      OPS = OBPct + SlgPct,
+      BABIP = round(BABIP, 3)
+    ) %>%
+    filter(PA > min_PA) %>%
+    arrange(Strikeout_rate) %>%
+    mutate(
+      Strikeout_rate = paste0(round(Strikeout_rate * 100), "%"),
+      Walk_rate = paste0(round(Walk_rate * 100), "%")
+    ) %>%
+    relocate(
+      player_name, team_name, Yr, year, Pos, conference, division, Jersey,
+      GP, GS, PA, Strikeout_rate, Walk_rate, BABIP, ISO, BA, OPS
+    )
+  
+  return(data_clean)
+} 
+```
+
+
+```{r big10-single_team_example}
+#Single Team Example
+Washington <- tryCatch(
+  {
+    Big10_Stats(team_id = 596443, team_name = "Washington") 
+  },
+  error = function(e) {
+    message("Note: Code runs in regular RStudio file: ", e$message)
+    return(NULL) # return NULL so the rest of the document still runs
+  }
+)
+```
+
+```{r big10-hitter_stats}
+# Pull stats for all Big Ten teams using pmap_dfr
 Big_10_Hitters <- pmap_dfr(
   Big_10_Teams,
   ~ Big10_Stats(team_id = ..2, team_name = ..1)
+) 
+
+```
+
+```{r acc-teams}
+# ACC Lookup Table: A lookup table for ACC teams with their corresponding IDs
+ACC_Teams <- tibble::tibble(
+  name = c("BC", "Cal", "Clemson", "Duke", "FSU", "GA_Tech", 
+           "Louisville", "UMiami", "NC_State", "UNC", "Notre_Dame",
+           "Pittsburgh", "Stanford", "Virginia", "VA_Tech", "Wake_Forest"),
+  id = c(596496, 596511, 596523, 596708, 596545, 596553,
+         596585, 596600, 596628, 596614, 596637,
+         596649, 596688, 596439, 596438, 596441)
 )
+```
+
+```{r acc-function}
+# ACC Stats Function: Function to pull and clean batting stats for a given ACC team and year
+ACC_Stats <- function(team_id, team_name, min_PA = 50) {
+  
+  # Pull ACC Raw Stats
+  data <- tryCatch(
+    ncaa_stats(team_id = team_id, year = 2025, type = "batting"),
+    error = function(e) {
+      message("Note: Code runs in regular RStudio file: ", team_name, ": ", e$message)
+      return(NULL)
+    }
+  )
+   if (is.null(data)) return(tibble())
+  
+  # Cleaned and calculated stats with additional metrics
+  data_clean <- data %>%
+    filter(Pos != "P") %>%
+    mutate(
+      PA = AB + BB + HBP + SF + SH,
+      ISO = SlgPct - BA,
+      Strikeout_rate = K / PA,
+      Walk_rate = BB / PA,
+      BABIP = (H - HR) / (AB - K - HR + SF),
+      OPS = OBPct + SlgPct,
+      BABIP = round(BABIP, 3)
+    ) %>%
+    filter(PA > min_PA) %>%
+    arrange(Strikeout_rate) %>%
+    mutate(
+      Strikeout_rate = paste0(round(Strikeout_rate * 100), "%"),
+      Walk_rate = paste0(round(Walk_rate * 100), "%")
+    ) %>%
+    relocate(
+      player_name, team_name, Yr, year, Pos, conference, division, Jersey,
+      GP, GS, PA, Strikeout_rate, Walk_rate, BABIP, ISO, BA, OPS
+    )
+  
+  return(data_clean)
+}
+```
+
+```{r acc-single_team_example}
+# Single Team Example
+Clemson <- tryCatch(
+  {
+    ACC_Stats(team_id = 596523, team_name = "Clemson")
+  },
+  error = function(e) {
+    message("Note: Code runs in regular RStudio file: ", e$message)
+    return(NULL) # return NULL so the rest of the document still runs
+  }
+)
+```
+
+```{r acc-hittter_stats}
+# Pull stats for all ACC teams using pmap_dfr
+ACC_Hitters <- pmap_dfr(
+  ACC_Teams,
+  ~ ACC_Stats(team_id = ..2, team_name = ..1)
+)
+```
+
+```{r big12-teams}
+# Big 12 Lookup Table: A lookup table for Big 12 teams with their corresponding IDs
+Big12_Teams <- tibble::tibble(
+  name = c("Arizona", "ASU", "BYU", "Baylor", "Cincinnati", "Houston",
+           "Kansas", "Kansas_St", "Oklahoma_St", "TCU", "Texas_Tech",
+           "UCF", "Utah", "West_Virginia"),
+  id = c(596706, 596485, 596499, 596493, 596521, 596561,
+         596575, 596574, 596714, 596421, 596423,
+         596519, 596432, 596444)
+)
+```
+
+```{r big12-function}
+# Big 12 Stats Function: Function to pull and clean batting stats for a given Big 12 team and year
+Big12_Stats <- function(team_id, team_name, min_PA = 50) {
+  
+  # Pull Big 12 Raw Stats
+  data <- tryCatch(
+    ncaa_stats(team_id = team_id, year = 2025, type = "batting"),
+    error = function(e) {
+      message("Note: Code runs in regular RStudio file: ", team_name, ": ", e$message)
+      return(NULL)
+    }
+  )
+   if (is.null(data)) return(tibble())
+  
+  # Cleaned and calculated stats with additional metrics
+  data_clean <- data %>%
+    filter(Pos != "P") %>%
+    mutate(
+      PA = AB + BB + HBP + SF + SH,
+      ISO = SlgPct - BA,
+      Strikeout_rate = K / PA,
+      Walk_rate = BB / PA,
+      BABIP = (H - HR) / (AB - K - HR + SF),
+      OPS = OBPct + SlgPct,
+      BABIP = round(BABIP, 3)
+    ) %>%
+    filter(PA > min_PA) %>%
+    arrange(Strikeout_rate) %>%
+    mutate(
+      Strikeout_rate = paste0(round(Strikeout_rate * 100), "%"),
+      Walk_rate = paste0(round(Walk_rate * 100), "%")
+    ) %>%
+    relocate(
+      player_name, team_name, Yr, year, Pos, conference, division, Jersey,
+      GP, GS, PA, Strikeout_rate, Walk_rate, BABIP, ISO, BA, OPS
+    )
+  
+  return(data_clean)
+}
+```
+
+```{r big12-single_team_example}
+# Single Team Example
+Arizona <- tryCatch(
+  {
+    Big12_Stats(team_id = 596706, team_name = "Arizona")
+  },
+  error = function(e) {
+    message("Note: Code runs in regular RStudio file: ", e$message)
+    return(NULL) # return NULL so the rest of the document still runs
+  }
+)
+```
+
+```{r big12-hitter_stats}
+# Pull stats for all Big 12 teams using pmap_dfr
+Big12_Hitters <- pmap_dfr(
+  Big12_Teams,
+  ~ Big12_Stats(team_id = ..2, team_name = ..1)
+)
+```
+
+```{r p4-hitters_combined}
+#Combine all conferences together using bind rows
+P4_Hitters <- bind_rows(
+  Big_10_Hitters,
+  SEC_Hitters,
+  ACC_Hitters,
+  Big12_Hitters
+)
+```
+
+```{r p4-udfa_hitters}
+#Use Baseball America to find UDFA ignees
+
+#Create an Excel Sheet with UDFA Signees: Name, MLB team, College, POS, Conference, and player_id (NCAA ID)
+
+#Import CSV back into R Studio
+
+#UDFA_2025 <- read.csv("path/to/UDFA_2025.csv", stringsAsFactors = FALSE)
+
+#Join Data with P4 Hitters
+
+#UDFA_TopHitters25 <- inner_join(P4_Hitters, UDFA_2025, by = "player_id")
+
+#Final dataset contains all Power Four Hitters who signed as UDFA's in 2025
 
 ```
 
@@ -205,18 +402,24 @@ body {
 <ul class="player-info">
 <li><b>College:</b> COLLEGE_NAME</li>
 <li><b>Team:</b> MLB_TEAM</li>
-<li><b>Level:</b> CURRENT_LEVEL</li>
+<li><b>Level Seen:</b> LEVEL </li>
+<li><b>Height/Weight:</b> HEIGHT/WEIGHT</li>
 <li><b>Age:</b> PLAYER_AGE</li>
 <li><b>Position:</b> PRIMARY_POSITION</li>
 <li><b>Bats/Throws:</b> B/T</li>
+<li><b>Last Date Seen: </b> DATE OF LAST LOOK </li>
+<li><b>Pro Games/Plate Appearences Seen: </b> GAMES / PLATE APPEARENCES SEEN </li>
+<li><b>Report Type:</b> LIVE/VIDEO </li>
 </ul>
 
 <div class="player-content">
 
 ### Amateur Summary
+##### Scout: SCOUT NAME
 [Insert amateur scouting summary here]
 
 ### Pro Summary
+##### Scout: SCOUT NAME
 [Insert professional scouting summary here]
 
 </div> <!-- end player-content -->
@@ -226,4 +429,3 @@ body {
 ```{r player_summary, message=FALSE, warning=FALSE}
 #Repeat Code Above for Every New Player
 ```
-
